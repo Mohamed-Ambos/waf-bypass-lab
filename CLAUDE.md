@@ -20,6 +20,15 @@ The design idea is the **"two doors"**: the same app is reachable through the WA
 and directly (`:3000`). You confirm a payload works on `:3000`, then learn to get it past
 the WAF on `:8080`. See `README.md` for the full workflow.
 
+**Optional third door — SafeLine WAF (`safeline/`).** A second, GUI-driven WAF (Chaitin
+SafeLine, semantic engine) vendored as its own compose stack in `safeline/`, with an admin
+dashboard on `https://127.0.0.1:9443`. It's separate from the main compose project and reaches
+Juice Shop via `http://127.0.0.1:3000` because its `tengine` proxy runs `network_mode: host`.
+Run it from the `safeline/` dir with `docker compose --env-file .env up -d`; see
+`safeline/README.md`. Contrast it with CRS: SafeLine does semantic analysis (no rule-ID/anomaly
+score), so signature-evasion tricks behave differently. `safeline/data/` and `safeline/.env`
+are gitignored.
+
 ## Common commands
 
 ```bash

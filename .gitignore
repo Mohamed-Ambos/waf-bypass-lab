@@ -1,3 +1,7 @@
 # ModSecurity audit logs (bind-mounted, generated at runtime)
 logs/*
 !logs/.gitkeep
+
+# SafeLine WAF runtime data + local env (generated, not committed)
+safeline/data/
+safeline/.env

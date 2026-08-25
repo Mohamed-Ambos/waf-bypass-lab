@@ -90,6 +90,32 @@ traversal, `932xxx` RCE/command injection.
 Tip: set `MODSEC_RULE_ENGINE=DetectionOnly` to see *everything a payload trips* without a
 403 stopping your tooling — then switch back to `On` to practise beating it.
 
+## Optional third door — SafeLine WAF (with a dashboard)
+
+The CRS WAF above has **no GUI** — it's the raw engine, configured by env vars and read via
+`logs/audit.log`. If you want the *admin-console* experience (live traffic graphs, an
+attack-event log, and point-and-click block/allow rules), the lab also ships a second WAF:
+**Chaitin SafeLine**, vendored as its own stack in [`safeline/`](safeline/).
+
+```bash
+cd safeline
+docker compose --env-file .env up -d                       # first run pulls ~1 GB
+docker exec safeline-mgt /app/mgt-cli reset-admin --once   # prints a one-time admin login
+# open https://127.0.0.1:9443  (self-signed cert), then add Juice Shop as a protected site
+docker compose --env-file .env stop                        # stop when done (data survives)
+```
+
+This gives you a **third door** on `:9080` (a port you create in the dashboard, upstream
+`http://127.0.0.1:3000`) with the console on **https://127.0.0.1:9443**. SafeLine uses a
+**semantic** engine rather than CRS's regex signatures, so the same payload often behaves very
+differently against it — that contrast is the point. Full walkthrough: [`safeline/README.md`](safeline/README.md).
+
+| Door | URL | Engine | Dashboard |
+|------|-----|--------|-----------|
+| Direct (control) | http://localhost:3000 | none | — |
+| CRS WAF | http://localhost:8080 | ModSecurity + OWASP CRS | no (`logs/audit.log`) |
+| SafeLine WAF | http://localhost:9080 | semantic analysis | **https://127.0.0.1:9443** |
+
 ## Suggested tools to point at `:8080`
 
 Burp Suite (proxy/repeater/intruder), `sqlmap`, `ffuf`, `nikto` — with `:3000` as the
