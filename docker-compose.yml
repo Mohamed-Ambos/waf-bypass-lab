@@ -16,10 +16,12 @@ services:
     ports:
       - "127.0.0.1:3000:3000"          # DIRECT door (bypasses the WAF)
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      # distroless image: only `node` is available (no shell/wget/curl)
+      test: ["CMD", "/nodejs/bin/node", "-e", "require('http').get('http://127.0.0.1:3000/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
-      retries: 6
+      retries: 10
+      start_period: 60s
 
   waf:
     image: owasp/modsecurity-crs:nginx

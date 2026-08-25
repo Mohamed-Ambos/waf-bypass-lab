@@ -33,7 +33,7 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:8080/?x=<script>alert
 curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:3000/?x=<script>alert(1)</script>"
 
 # which CRS rules fired (JSON audit log, bind-mounted to ./logs)
-tail -f logs/audit.log | jq -r '.transaction.messages[]?.message'
+tail -f logs/audit.log | jq -r '.transaction.messages[]? | "\(.details.ruleId)  \(.message)"'
 ```
 
 ## Conventions & constraints
@@ -41,6 +41,12 @@ tail -f logs/audit.log | jq -r '.transaction.messages[]?.message'
 - **Ports bind to `127.0.0.1` only.** The target is deliberately vulnerable; never expose it
   to an untrusted network. Keep any new service loopback-bound.
 - **`logs/` is runtime-only** and gitignored (except `logs/.gitkeep`). Don't commit audit logs.
+- **Log permissions gotcha:** the WAF runs as uid `101`; a freshly-cloned `logs/` is owned by
+  your user, so the audit file stays empty until you `chmod 777 logs` once. If the file exists
+  but is stale, the WAF opens the handle at start — `docker compose restart waf` after changing
+  perms.
+- **Juice Shop is a distroless image** (only `/nodejs/bin/node`, no shell/wget/curl). The
+  healthcheck therefore calls `/nodejs/bin/node` by absolute path — keep that if you edit it.
 - **WAF behaviour is configured entirely via environment variables** in `docker-compose.yml`
   (`MODSEC_RULE_ENGINE`, `PARANOIA`, `ANOMALY_INBOUND`, …) — prefer changing those over baking
   custom rule files, unless the goal is specifically to practise writing/whitelisting rules.

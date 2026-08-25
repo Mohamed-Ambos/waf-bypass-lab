@@ -29,6 +29,10 @@ docker compose logs -f waf  # watch the WAF
 docker compose down         # stop & remove (images stay cached)
 ```
 
+> **First run — log permissions.** The WAF writes its audit log as uid `101`, but a fresh
+> `git clone` creates `logs/` owned by your user, so the WAF can't write into it and the file
+> stays empty. Fix once with `chmod 777 logs` (the `logs/` contents are gitignored anyway).
+
 Open the app in a browser:
 
 - **Through the WAF:** http://localhost:8080  ← attack this
@@ -59,9 +63,17 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:3000/?x=<script>alert
 ### See which rules fired (live)
 
 ```bash
-tail -f logs/audit.log | jq -r '.transaction.messages[]?.message'
-# or the rule IDs + scores:
-tail -f logs/audit.log | jq -r '.transaction.messages[]?.details | "\(.ruleId)  \(.data)"'
+# rule id + human message for every rule that fired
+tail -f logs/audit.log | jq -r '.transaction.messages[]? | "\(.details.ruleId)  \(.message)"'
+```
+
+Example output after firing an XSS and a SQLi payload:
+
+```
+941100  XSS Attack Detected via libinjection
+941110  XSS Filter - Category 1: Script Tag Vector
+942100  SQL Injection Attack Detected via libinjection
+949110  Inbound Anomaly Score Exceeded (Total Score: 15)
 ```
 
 CRS rule-ID families you'll see a lot: `941xxx` XSS, `942xxx` SQLi, `930xxx` LFI/path
