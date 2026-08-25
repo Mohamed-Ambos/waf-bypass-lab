@@ -36,6 +36,27 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:3000/?x=<script>alert
 tail -f logs/audit.log | jq -r '.transaction.messages[]? | "\(.details.ruleId)  \(.message)"'
 ```
 
+## Validating changes
+
+This is an infra/config repo — there is **no build, lint, or test suite**. "Validation" means:
+
+1. **Lint the compose file:** `docker compose config` (catches YAML / env-var typos before a
+   recreate).
+2. **Recreate and check health:** `docker compose up -d && docker compose ps` — both services
+   should report `healthy`.
+3. **The core test loop** is the `403` (WAF) vs `200` (direct) diff: after any change to WAF
+   behaviour, re-run the two `curl` sanity checks above and compare the status codes. A change
+   that makes `:8080` stop returning `403` on a known-malicious payload has weakened the WAF; a
+   change that makes `:3000` return anything but `200` has broken the app.
+
+**Which reload do I need?**
+
+- **Changed an env var / port / volume in `docker-compose.yml`** → `docker compose up -d`
+  (recreates the affected container so the new config takes effect).
+- **Changed `logs/` permissions or want a stale audit handle reopened** → `docker compose
+  restart waf` (the WAF opens the audit-log file handle at start, so a plain perms fix alone
+  won't take until it restarts).
+
 ## Conventions & constraints
 
 - **Ports bind to `127.0.0.1` only.** The target is deliberately vulnerable; never expose it
