@@ -1,0 +1,53 @@
+# WAF bug-hunting practice lab
+#   waf  (nginx + ModSecurity v3 + OWASP CRS)  --proxies-->  juiceshop
+#
+# Two doors into the SAME app so you can learn WAF-bypass technique:
+#   http://localhost:8080  -> through the WAF   (attack this)
+#   http://localhost:3000  -> straight to app   (control: prove a payload works here first)
+#
+# Both are bound to 127.0.0.1 only: the deliberately-vulnerable app is never
+# reachable from the network.
+
+services:
+  juiceshop:
+    image: bkimminich/juice-shop:latest
+    container_name: waflab-juiceshop
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"          # DIRECT door (bypasses the WAF)
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  waf:
+    image: owasp/modsecurity-crs:nginx
+    container_name: waflab-waf
+    restart: unless-stopped
+    depends_on:
+      juiceshop:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"          # WAF door
+    environment:
+      # --- proxy ---
+      BACKEND: "http://juiceshop:3000" # upstream, by compose service DNS name
+      PROXY_SSL: "off"
+
+      # --- ModSecurity engine ---
+      MODSEC_RULE_ENGINE: "On"         # On = block | DetectionOnly = log-but-allow | Off
+      MODSEC_REQ_BODY_ACCESS: "On"     # inspect request bodies (JSON/form) -> catches API attacks
+
+      # --- OWASP CRS tuning (the knobs you learn with) ---
+      PARANOIA: "1"                    # 1..4  higher = stricter rules = more to bypass (+ more FPs)
+      ANOMALY_INBOUND: "5"             # request blocks when summed rule scores reach this
+      ANOMALY_OUTBOUND: "4"
+
+      # --- audit log: one JSON file, bind-mounted to ./logs so you can grep/jq it ---
+      MODSEC_AUDIT_ENGINE: "RelevantOnly"
+      MODSEC_AUDIT_LOG_TYPE: "Serial"
+      MODSEC_AUDIT_LOG: "/var/log/modsecurity/audit.log"
+      MODSEC_AUDIT_LOG_FORMAT: "JSON"
+    volumes:
+      - ./logs:/var/log/modsecurity

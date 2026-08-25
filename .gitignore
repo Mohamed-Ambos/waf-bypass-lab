@@ -1,0 +1,3 @@
+# ModSecurity audit logs (bind-mounted, generated at runtime)
+logs/*
+!logs/.gitkeep
