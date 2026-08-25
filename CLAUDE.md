@@ -16,18 +16,31 @@ Two containers, defined in `docker-compose.yml`:
 | `waf` | `owasp/modsecurity-crs:nginx` | nginx + ModSecurity v3 + OWASP Core Rule Set, reverse-proxying the app. Exposed on `127.0.0.1:8080`. |
 | `juiceshop` | `bkimminich/juice-shop:latest` | Intentionally-vulnerable target app. Exposed **directly** on `127.0.0.1:3000` (bypasses the WAF) as a control. |
 
-The design idea is the **"two doors"**: the same app is reachable through the WAF (`:8080`)
-and directly (`:3000`). You confirm a payload works on `:3000`, then learn to get it past
-the WAF on `:8080`. See `README.md` for the full workflow.
+The design idea is **"multiple doors"** into the *same* Juice Shop: the app is reachable
+through a WAF and directly (`:3000`). You confirm a payload works on `:3000` (the control),
+then learn to get it past a WAF door and read *why* it blocked. See `README.md` for the full
+workflow and architecture diagram.
 
-**Optional third door — SafeLine WAF (`safeline/`).** A second, GUI-driven WAF (Chaitin
+**Second WAF — SafeLine (`safeline/`), the dashboard door.** A GUI-driven WAF (Chaitin
 SafeLine, semantic engine) vendored as its own compose stack in `safeline/`, with an admin
-dashboard on `https://127.0.0.1:9443`. It's separate from the main compose project and reaches
-Juice Shop via `http://127.0.0.1:3000` because its `tengine` proxy runs `network_mode: host`.
-Run it from the `safeline/` dir with `docker compose --env-file .env up -d`; see
-`safeline/README.md`. Contrast it with CRS: SafeLine does semantic analysis (no rule-ID/anomaly
-score), so signature-evasion tricks behave differently. `safeline/data/` and `safeline/.env`
-are gitignored.
+console on `https://127.0.0.1:9443`. It is a **separate compose project** from the main lab and
+reaches Juice Shop at `http://127.0.0.1:3000` because its `tengine` proxy runs
+`network_mode: host` (so the main `docker-compose.yml` is untouched). Key facts:
+
+- **The `:9080` attack door does not exist until you create it** in the dashboard as a protected
+  site: domain `127.0.0.1`, listen `9080`, upstream `http://127.0.0.1:3000`.
+- **`safeline/compose.yaml` is vendored verbatim from `waf.chaitin.com`** with a *single*
+  deliberate change: the dashboard port is bound to `127.0.0.1` (loopback rule). If you re-pull
+  upstream, re-apply that one edit.
+- **Subnet:** `SUBNET_PREFIX=172.30.222` in `safeline/.env`. The upstream default `172.22.222`
+  collides with an existing `infisical` docker network on this host — keep it off `172.22.x`.
+- **Engine contrast (the pedagogical point):** SafeLine does semantic analysis, so there is **no
+  rule ID / anomaly score** like CRS. Signature-evasion tricks (case, comments, encoding) that
+  beat CRS often fail here, and vice-versa.
+- **`safeline/data/` and `safeline/.env` are gitignored** (`.env` holds a generated Postgres
+  password). `compose.yaml` and `safeline/README.md` are committed.
+- **Heads-up:** SafeLine's containers use `restart: always`, so they auto-start on Docker
+  daemon restart / reboot. Switch to `unless-stopped` if that's unwanted.
 
 ## Common commands
 
@@ -43,6 +56,17 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:3000/?x=<script>alert
 
 # which CRS rules fired (JSON audit log, bind-mounted to ./logs)
 tail -f logs/audit.log | jq -r '.transaction.messages[]? | "\(.details.ruleId)  \(.message)"'
+```
+
+SafeLine stack (run from the `safeline/` dir; `--env-file .env` is required every time):
+
+```bash
+cd safeline
+docker compose --env-file .env up -d                       # start (first run pulls ~1 GB)
+docker compose --env-file .env ps                          # 7 containers; several report healthy
+docker exec safeline-mgt /app/mgt-cli reset-admin --once   # mint a one-time admin login
+curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1:9443/api/open/health  # expect 200
+docker compose --env-file .env stop                        # pause (data in ./data survives)
 ```
 
 ## Validating changes
@@ -87,8 +111,9 @@ This is an infra/config repo — there is **no build, lint, or test suite**. "Va
 
 ## Extending the lab
 
+- ✅ **Done:** a second WAF (SafeLine) to compare regex/CRS vs semantic detection — see `safeline/`.
 - Add a second vulnerable target (e.g. DVWA) as another compose service behind the same WAF.
 - Add a second WAF port running `MODSEC_RULE_ENGINE=DetectionOnly` to diff block-vs-detect.
-- Swap/add a different WAF (e.g. SafeLine) to compare regex/CRS vs semantic detection.
+- Point SafeLine at a *second* protected site so one dashboard fronts multiple targets.
 
 Keep additions self-contained in this repo; do not add dependencies on external/private infra.
