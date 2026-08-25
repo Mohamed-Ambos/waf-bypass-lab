@@ -29,13 +29,40 @@ doors into the same Juice Shop:
   `http://127.0.0.1:3000` reaches Juice Shop's direct door with **no change to the main
   `docker-compose.yml`**.
 
+## First-time setup on a new machine
+
+`.env` and `data/` are gitignored, so a fresh `git clone` has no `.env` yet — create it from the
+template, then start:
+
+```bash
+cd safeline
+cp .env.example .env
+
+# 1) SAFELINE_DIR -> an absolute path on THIS machine (in-repo is fine):
+sed -i "s|^SAFELINE_DIR=.*|SAFELINE_DIR=$(pwd)/data|" .env
+
+# 2) POSTGRES_PASSWORD -> a fresh 32-char random value:
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(LC_ALL=C tr -dc A-Za-z0-9 </dev/urandom | head -c 32)|" .env
+
+# 3) SUBNET_PREFIX -> must be a /24 that is FREE on this host. Check what's taken:
+for n in $(docker network ls --format '{{.Name}}'); do \
+  docker network inspect "$n" --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}'; done
+# then, if 172.30.222 collides, edit SUBNET_PREFIX in .env to a free one (e.g. 172.29.222).
+
+docker compose --env-file .env config >/dev/null && echo "env OK"   # validate before starting
+```
+
+Requirements: ~5 CPU cores and ~8 GB RAM run the full stack comfortably; on a 2-core box
+SafeLine's background services will bog things down (start it only when you need the dashboard).
+
 ## Start / stop
 
 ```bash
 cd safeline
 docker compose --env-file .env up -d     # first run pulls ~1 GB of images
 docker compose --env-file .env ps        # wait for containers to be healthy
-docker compose --env-file .env down      # stop (data in ./data survives)
+docker compose --env-file .env stop      # pause (data in ./data survives)
+docker compose --env-file .env down      # stop & remove containers (data still survives)
 ```
 
 ## First login
